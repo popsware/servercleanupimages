@@ -1,14 +1,11 @@
-﻿using beautifier_web.Helpers;
-using beautifier_web.Models;
-using MySql.Data.MySqlClient;
+﻿using MySql.Data.MySqlClient;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ServerCleanUpImages
 {
@@ -31,7 +28,7 @@ namespace ServerCleanUpImages
             string tableToCheck = "beautifier.postpic";
             string paramToParse = "link";
             */
-            if(args.Length != 3)
+            if (args.Length != 3)
             {
                 Console.WriteLine("arg 0: path of images");
                 Console.WriteLine("arg 1: dbname.tablename");
@@ -45,11 +42,12 @@ namespace ServerCleanUpImages
             string tableToCheck = args[1];
             string paramToParse = args[2];
 
+            Console.Title = tableToCheck + " cleanup...";
 
             List<MyObj> list = new List<MyObj>();
             using (MySqlConnection con = new MySqlConnection(connStr))
             {
-                string query = "SELECT "+paramToParse+" FROM "+tableToCheck;
+                string query = "SELECT " + paramToParse + " FROM " + tableToCheck;
                 using (MySqlCommand cmd = new MySqlCommand(query))
                 {
                     cmd.Connection = con;
@@ -65,7 +63,7 @@ namespace ServerCleanUpImages
                 }
             }
 
-            Console.WriteLine("Files in the db:");
+            Logger.LogAction("DB_IMGS", "found " + list.Count + " images in the DB");
             foreach (MyObj o in list)
             {
                 Console.WriteLine(o.param);
@@ -79,13 +77,17 @@ namespace ServerCleanUpImages
             }
 
             IEnumerable<string> files = Directory.EnumerateFiles(pathToClean);//Directory.EnumerateFiles(pathToClean, "*.xml")
-            Console.WriteLine("Files available:");
+            Logger.LogAction("FILE_FOUND", "files found:");
             foreach (string fileFullPath in files)
             {
-                
+
                 //string contents = File.ReadAllText(file);
-                Console.WriteLine(fileFullPath);
+                Logger.LogAction("FILE_FOUND", fileFullPath);
             }
+
+
+            Logger.LogAction("PARSE_FILE", "parsing starting");
+
 
             //Console.Write("Enter any key to start cleanup...");
             //Console.ReadKey(true);
@@ -93,25 +95,26 @@ namespace ServerCleanUpImages
             foreach (string fileFullPath in files)
             {
                 string fileName = System.IO.Path.GetFileName(fileFullPath);
-                Console.WriteLine("parsing " + fileName);
+                Logger.LogAction("PARSE_FILE", "parsing " + fileName);
 
 
                 foreach (MyObj o in list)
                 {
-                    Console.WriteLine("parsing " + fileName + "=="+o.param);
                     if (o.param.Equals(fileName))
                     {
-                        Console.WriteLine("parsing " + fileName+": used in db");
+                        Logger.LogAction("PARSE_FILE", "parsing " + fileName + ": used in db");
                         goto REPEAT;
                     }
                 }
 
 
-                Console.WriteLine("parsing " + fileName + ": not used in db");
+                Logger.LogAction("PARSE_FILE", "parsing " + fileName + ": not used in db");
                 backupFile(fileName);
 
-                REPEAT:;
+            REPEAT:;
             }
+
+            Logger.LogAction("PARSE_FILE", "parsing complete");
 
             //Console.Write("Please enter your name: ");
             //int input = Console.Read();
@@ -120,17 +123,24 @@ namespace ServerCleanUpImages
 
         public static void backupFile(string fileName)
         {
-            // Use Path class to manipulate file and directory paths.
-            string sourceFile = System.IO.Path.Combine(pathToClean, fileName);
-            string destFile = System.IO.Path.Combine(targetPath, fileName);
+            try
+            {
+                // Use Path class to manipulate file and directory paths.
+                string sourceFile = System.IO.Path.Combine(pathToClean, fileName);
+                string destFile = System.IO.Path.Combine(targetPath, fileName);
 
+                // To move a file to another location and 
+                System.IO.File.Move(sourceFile, destFile);
+            }
+            catch (Exception)
+            {
+                Logger.LogAction("MOVE_FILE", "file move failed, you might need to run command as an admin");
 
-            // To move a file to another location and 
-            System.IO.File.Move(sourceFile, destFile);
+            }
         }
     }
 
-    public class MyObj: MyModel
+    public class MyObj
     {
         public string param { get; set; }
 
@@ -145,11 +155,43 @@ namespace ServerCleanUpImages
             }
             catch (Exception e)
             {
-                Logger.LogObjectError(e.Message, ToString());
-                throw e;
+                Logger.LogAction("OBJERR", e.Message + " - " + JsonConvert.SerializeObject(this));
+                throw;
             }
         }
 
-
+        public override string ToString()
+        {
+            string r = "";
+            r += GetType();
+            r += "[";
+            foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(this))
+            {
+                string name = descriptor.Name;
+                object value = descriptor.GetValue(this);
+                r += name + "=" + value + ", ";
+            }
+            r += "]";
+            return r;
+        }
+    }
+    static class Logger
+    {
+        private static string sPathName = ConfigurationManager.AppSettings["Log"];   //System.Web.HttpContext.Current.Server.MapPath("/Logs/");
+        private static string getTimestamp()
+        {
+            return DateTime.Now.ToShortDateString() + " " + DateTime.Now.ToLongTimeString();
+        }
+        internal static void LogAction(string loglevel, string action)
+        {
+            string logfiletype = "LOG";
+            Console.WriteLine(action);
+            Trace.WriteLine(logfiletype + ": " + action);
+            string filename = sPathName + DateTime.Now.ToString("yyyyMMdd") + "_" + logfiletype + ".txt";
+            StreamWriter sw = new StreamWriter(filename, true);
+            sw.WriteLine(getTimestamp() + " : " + loglevel + " - " + action);
+            sw.Flush();
+            sw.Close();
+        }
     }
 }
