@@ -41,7 +41,9 @@ namespace ServerCleanUpImages
             targetPath = pathToClean + "/cleanup";
             string tableToCheck = args[1];
             string paramToParse = args[2];
-
+            Logger.LogAction("INIT", "Clean Up location " + pathToClean);
+            Logger.LogAction("INIT", "Backing Up location " + targetPath);
+            Logger.LogAction("INIT", "Checking images from table " + tableToCheck + ", column " + paramToParse);
             Console.Title = tableToCheck + " cleanup...";
 
             List<MyObj> list = new List<MyObj>();
